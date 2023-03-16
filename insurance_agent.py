@@ -6,31 +6,24 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 import os, urllib
+import plotly.express as px
+import model
+import pickle
 
 # Streamlit encourages well-structured code, like starting execution in a main() function.
 def main():
     # Render the readme as markdown using st.markdown.
-    readme_text = st.markdown(get_file_content_as_string("instructions.md"))
-
-    '''
-    # Download external dependencies.
-    for filename in EXTERNAL_DEPENDENCIES.keys():
-        download_file(filename)
-    '''
-        
+    readme_text = st.markdown(get_file_as_string("instructions.md"))
     # Once we have the dependencies, add a selector for the app mode on the sidebar.
     st.sidebar.title("Client Data Analysis")
     app_mode = st.sidebar.selectbox("Choose the app mode",
-        ["Show instructions", "Run the app", "Show the source code"])
-    if app_mode == "Show instructions":
-        st.sidebar.success('To continue select "Run the app".')
-    elif app_mode == "Show the source code":
-        readme_text.empty()
-        st.code(get_file_content_as_string("streamlit_app.py"))
-    elif app_mode == "Run the app":
+        ["기존 고객 분석", "신규 고객 분석"])
+    if app_mode == "신규 고객 분석":
         readme_text.empty()
         run_the_app()
-
+    elif app_mode == "기존 고객 분석":
+        readme_text.empty()
+        cur_client_app()
     
 # This file downloader demonstrates Streamlit animation.
 def download_file(file_path):
@@ -70,91 +63,170 @@ def download_file(file_path):
         if progress_bar is not None:
             progress_bar.empty()
 
-# This is the main app app itself, which appears when the user selects "Run the app".
+# 신규 고객 분석 페이지
 def run_the_app():
     # To make Streamlit fast, st.cache allows us to reuse computation across runs.
     # In this common pattern, we download data from an endpoint only once.
     @st.cache_data
     def load_metadata(url):
-        return pd.read_csv(url)
+        return pd.read_csv(url,encoding='euc-kr')
 
     # This function uses some Pandas magic to summarize the metadata Dataframe.
     @st.cache_data
     def create_summary(metadata):
-        one_hot_encoded = pd.get_dummies(metadata[["frame", "label"]], columns=["label"])
-        summary = one_hot_encoded.groupby(["frame"]).sum().rename(columns={
-            "label_biker": "학생",
-            "label_car": "주부",
-            "label_pedestrian": "직장인",
-            "label_trafficLight": "의사",
-            "label_truck": "군인"
-        })
-        return summary
+        st.write(metadata.columns)
+        one_hot_encoded = pd.get_dummies(metadata[["CUST_ID", "OCCP_NAME_G"]], columns=["OCCP_NAME_G"])
+        one_hot_encoded.rename(columns = lambda x: x.replace("OCCP_NAME_G_",""), inplace = True)
+        return one_hot_encoded.iloc[:,2:]
+    
+    # 보험 해지 여부 결정
+    x_resampled=pd.read_csv(r'./data/보험 해지 여부 x.csv',encoding='euc-kr')
+    st.markdown(model.insurance_cancellation_predict(x_resampled.iloc[[3],1:]))
 
-    # An amazing property of st.cached functions is that you can pipe them into
-    # one another to form a computation DAG (directed acyclic graph). Streamlit
-    # recomputes only whatever subset is required to get the right answer!
-    metadata = load_metadata(os.path.join(DATA_URL_ROOT, "labels.csv.gz"))
+    # 대출 연체 여부 결정
+    st.markdown(model.insurance_cancellation_predict(x_resampled.iloc[[3],1:]))
+
+
+def cur_client_app():
+    # To make Streamlit fast, st.cache allows us to reuse computation across runs.
+    # In this common pattern, we download data from an endpoint only once.
+    @st.cache_data
+    def load_metadata(url):
+        return pd.read_csv(url,encoding='utf-8')
+
+    # This function uses some Pandas magic to summarize the metadata Dataframe.
+    @st.cache_data
+    def create_summary(metadata):
+        one_hot_encoded = pd.get_dummies(metadata[["CUST_ID", "OCCP_NAME_G"]], columns=["OCCP_NAME_G"])
+        one_hot_encoded.rename(columns = lambda x: x.replace("OCCP_NAME_G_",""), inplace = True)
+        return one_hot_encoded[['CUST_ID']]
+    
+    metadata =  load_metadata(r'./data/insurance_db.csv')
     summary = create_summary(metadata)
 
+    select_options=frame_selector_cur_client_ui(summary)
+
+    select_metadata = metadata[metadata['CUST_ID']==select_options][['CRDT_CARD_CNT', 'SPTCT_OCCR_MDIF', 'BNK_LNIF_AMT', 'TOT_LNIF_CNT',
+       'TOT_LNIF_AMT', 'CPT_LNIF_CNT', 'SPART_LNIF_CNT', 'CPT_LNIF_AMT',
+       'CRLN_OVDU_RATE', 'CRDT_OCCR_MDIF', 'CTCD_OCCR_MDIF', 'CB_GUIF_AMT',
+       'TOT_CLIF_AMT', 'AUTR_FAIL_MCNT', 'TARGET']]
+    
+    insurance_col_df = load_metadata(r'./data/insurace_db_column.csv')
+    col_index = insurance_col_df.set_index('column_name').to_dict()['column_mean']
+    
+    important_vars = ['CRDT_CARD_CNT', 'SPTCT_OCCR_MDIF', 'BNK_LNIF_AMT', 'TOT_LNIF_CNT',
+       'TOT_LNIF_AMT', 'CPT_LNIF_CNT', 'SPART_LNIF_CNT', 'CPT_LNIF_AMT',
+       'CRLN_OVDU_RATE', 'CRDT_OCCR_MDIF', 'CTCD_OCCR_MDIF', 'CB_GUIF_AMT',
+       'TOT_CLIF_AMT', 'AUTR_FAIL_MCNT', 'TARGET']
+
+    rename_dict = {}
+    for key, item in col_index.items():
+        if key in important_vars:
+            rename_dict[key] = item
+
+    
+
+    select_metadata=metadata[metadata['CUST_ID']==select_options][['CRDT_CARD_CNT', 'SPTCT_OCCR_MDIF', 'BNK_LNIF_AMT', 'TOT_LNIF_CNT',
+       'TOT_LNIF_AMT', 'CPT_LNIF_CNT', 'SPART_LNIF_CNT', 'CPT_LNIF_AMT',
+       'CRLN_OVDU_RATE', 'CRDT_OCCR_MDIF', 'CTCD_OCCR_MDIF', 'CB_GUIF_AMT',
+       'TOT_CLIF_AMT', 'AUTR_FAIL_MCNT', 'TARGET']]
+
+    select_metadata.rename(columns=rename_dict,inplace=True)
+    # 칼럼 이름 순 정렬
+    select_metadata = select_metadata.reindex(sorted(select_metadata.columns), axis=1)
+
+    # head
+    u_u_col1, u_u_col2, u_u_col3, u_u_col4 = st.columns(4)
+    with u_u_col1:
+            st.markdown("나의 고객")
+            st.markdown(f"{metadata.shape[0]}명")
+    with u_u_col2:
+            st.markdown("나의 기존 고객")
+            st.markdown(f"{metadata.shape[0]//10*9}명")
+    with u_u_col3:
+            st.markdown("나의 신규 고객")
+            st.markdown(f"{metadata.shape[0]//10}명")
+    with u_u_col4:
+            st.markdown("나의 VIP 고객")
+            st.markdown(f"{metadata.shape[0]//100}명")
+
+    
+    st.markdown("----------------------------------------")
+
+
+    # body
+    u_col1, u_col2 = st.columns([4,1])
+    with u_col1:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("연체 예상 여부")
+            # 본인의 연체율과 소득 대비 평균 연체율
+            df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
+            df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
+            chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
+            st.bar_chart(chart_data.T,width=600,height=400,use_container_width=True)
+        with col2:
+            st.markdown("만기 가능 여부")
+            # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
+            a=metadata[metadata['CUST_ID']==select_options][['FMLY_PLPY_CNT']].iloc[0][0]
+            b=metadata[metadata['CUST_ID']==select_options][['CNTT_LAMT_CNT']].iloc[0][0]
+            c=a/(a+b)
+            a1=metadata[['FMLY_PLPY_CNT']].sum()[0]
+            b1=metadata[['CNTT_LAMT_CNT']].sum()[0]
+            c1=a1/(a1+b1)
+
+            chart_data=pd.DataFrame({
+                '해당 고객 만기율':[c],
+                '전체고객 만기율':[c1],
+            })
+            st.bar_chart(chart_data.T,width=600,height=400,use_container_width=True,x=['해당 고객 만기율','전체고객 만기율'])
+        with col3:
+            st.markdown("현재 신용 등급")
+            # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
+            df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
+            df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
+            chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
+            st.bar_chart(chart_data,width=600,height=400,use_container_width=True)
+    with u_col2:
+        st.markdown("보험료, 신용대출,  약관대출 비율")
+        df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
+        df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
+        chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
+        st.bar_chart(chart_data,width=600,height=400,use_container_width=True)
+
     # Uncomment these lines to peek at these DataFrames.
-    # st.write('## Metadata', metadata[:1000], '## Summary', summary[:1000])
-
-    # Draw the UI elements to search for objects (pedestrians, cars, etc.)
-    selected_frame_index, selected_frame = frame_selector_ui(summary)
-    if selected_frame_index == None:
-        st.error("No frames fit the criteria. Please select different label or number.")
-        return
-
-    # Draw the UI element to select parameters for the YOLO object detector.
-    confidence_threshold, overlap_threshold = object_detector_ui()
-
-    # Load the image from S3.
-    
-    image_url = os.path.join(DATA_URL_ROOT, selected_frame)
-    image = load_image(image_url)
+    # st.markdown('## 선택한 기존 고객 정보')
+    # st.table(select_metadata.T)
     
 
-    
-    # Add boxes for objects on the image. These are the boxes for the ground image.
-    boxes = metadata[metadata.frame == selected_frame].drop(columns=["frame"])
-    draw_image_with_boxes(image, boxes, "Ground Truth",
-        "**Human-annotated data** (frame `%i`)" % selected_frame_index)
 
-    
-    # Get the boxes for the objects detected by YOLO by running the YOLO model.
-    yolo_boxes = yolo_v3(image, confidence_threshold, overlap_threshold)
-    draw_image_with_boxes(image, yolo_boxes, "Real-time Computer Vision",
-        "**YOLO v3 Model** (overlap `%3.1f`) (confidence `%3.1f`)" % (overlap_threshold, confidence_threshold))
-    
+
 # This sidebar UI is a little search engine to find certain object types.
 def frame_selector_ui(summary):
-    st.sidebar.markdown("# Client")
+    st.sidebar.markdown("## Client 정보 입력")
 
     # The user can pick which type of object to search for.
-    object_type = st.sidebar.selectbox("직업을 선택하시오?", summary.columns, 2)
-
-
-    # The user can select a range for how many of the selected objecgt should be present.
-    min_elts, max_elts = st.sidebar.slider("How many %ss (select a range)?" % object_type, 0, 25, [10, 20])
-    selected_frames = get_selected_frames(summary, object_type, min_elts, max_elts)
-    if len(selected_frames) < 1:
-        return None, None
+    object_type = st.sidebar.selectbox("현재 직업을 선택하세요", summary.columns, 2)
 
     # Choose a frame out of the selected frames.
-    selected_frame_index = st.sidebar.slider("실가족원수가 몇 명입니까?", 0, len(selected_frames) - 1, 0)
+    selected_frame_index = st.sidebar.slider("실가족원수가 몇 명입니까?", 0, 100)
 
-    # Draw an altair chart in the sidebar with information on the frame.
-    objects_per_frame = summary.loc[selected_frames, object_type].reset_index(drop=True).reset_index()
-    chart = alt.Chart(objects_per_frame, height=120).mark_area().encode(
-        alt.X("index:Q", scale=alt.Scale(nice=False)),
-        alt.Y("%s:Q" % object_type))
-    selected_frame_df = pd.DataFrame({"selected_frame": [selected_frame_index]})
-    vline = alt.Chart(selected_frame_df).mark_rule(color="red").encode(x = "selected_frame")
-    st.sidebar.altair_chart(alt.layer(chart, vline))
+    # 소득 입력란
+    cur_income = st.sidebar.number_input("현재 소득을 입력해주세요.",min_value=0,format='%d') / 1000
 
-    selected_frame = selected_frames[selected_frame_index]
+    selected_frame = ''
     return selected_frame_index, selected_frame
+
+# This sidebar UI is a little search engine to find certain object types.
+def frame_selector_cur_client_ui(summary):
+    st.sidebar.markdown("## Client 정보 입력")
+
+    # The user can pick which type of object to search for.
+    object_type = st.sidebar.selectbox("기존 고객을 선택하세요", summary['CUST_ID'].unique(), 2)
+    return object_type
+
+
+
 
 # Select frames based on the selection in the sidebar
 @st.cache_data()
@@ -191,9 +263,15 @@ def draw_image_with_boxes(image, boxes, header, description):
 # Download a single file and make its content available as a string.
 @st.cache_resource
 def get_file_content_as_string(path):
-    url = 'https://raw.githubusercontent.com/streamlit/demo-self-driving/master/' + path
+    url = 'https://github.com/HyeongseonKim/streamlit_insurance_app/blob/main/' + path
     response = urllib.request.urlopen(url)
     return response.read().decode("utf-8")
+
+def get_file_as_string(path):
+    f = open(path, "r", encoding='utf-8')
+    str1 =  f.read()
+    print(str1)
+    return str1
 
 # This function loads an image from Streamlit public repo on S3. We use st.cache on this
 # function as well, so we can reuse the images across runs.
@@ -269,7 +347,7 @@ def yolo_v3(image, confidence_threshold, overlap_threshold):
     return boxes[["xmin", "ymin", "xmax", "ymax", "labels"]]
 
 # Path to the Streamlit public S3 bucket
-DATA_URL_ROOT = "https://streamlit-self-driving.s3-us-west-2.amazonaws.com"
+DATA_URL_ROOT = "https://streamlit-self-driving.s3-us-west-2.amazonaws.com/"
 
 # External files to download.
 EXTERNAL_DEPENDENCIES = {
