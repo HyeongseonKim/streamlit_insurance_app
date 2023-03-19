@@ -9,6 +9,7 @@ import os, urllib
 import plotly.express as px
 import model
 import pickle
+import matplotlib.pyplot as plt
 
 # Streamlit encourages well-structured code, like starting execution in a main() function.
 def main():
@@ -84,9 +85,10 @@ def run_the_app():
     st.markdown(model.insurance_cancellation_predict(x_resampled.iloc[[3],1:]))
 
     # 대출 연체 여부 결정
-    st.markdown(model.insurance_cancellation_predict(x_resampled.iloc[[3],1:]))
+    x_resampled=pd.read_csv(r'./data/대출 연체 여부 x.csv',encoding='euc-kr')
+    st.markdown(model.loan_overdue_predict(x_resampled.iloc[[3],1:]))
 
-
+# 신규 고객 페이지
 def cur_client_app():
     # To make Streamlit fast, st.cache allows us to reuse computation across runs.
     # In this common pattern, we download data from an endpoint only once.
@@ -125,7 +127,6 @@ def cur_client_app():
             rename_dict[key] = item
 
     
-
     select_metadata=metadata[metadata['CUST_ID']==select_options][['CRDT_CARD_CNT', 'SPTCT_OCCR_MDIF', 'BNK_LNIF_AMT', 'TOT_LNIF_CNT',
        'TOT_LNIF_AMT', 'CPT_LNIF_CNT', 'SPART_LNIF_CNT', 'CPT_LNIF_AMT',
        'CRLN_OVDU_RATE', 'CRDT_OCCR_MDIF', 'CTCD_OCCR_MDIF', 'CB_GUIF_AMT',
@@ -134,70 +135,235 @@ def cur_client_app():
     select_metadata.rename(columns=rename_dict,inplace=True)
     # 칼럼 이름 순 정렬
     select_metadata = select_metadata.reindex(sorted(select_metadata.columns), axis=1)
-
-    # head
-    u_u_col1, u_u_col2, u_u_col3, u_u_col4 = st.columns(4)
-    with u_u_col1:
-            st.markdown("나의 고객")
-            st.markdown(f"{metadata.shape[0]}명")
-    with u_u_col2:
-            st.markdown("나의 기존 고객")
-            st.markdown(f"{metadata.shape[0]//10*9}명")
-    with u_u_col3:
-            st.markdown("나의 신규 고객")
-            st.markdown(f"{metadata.shape[0]//10}명")
-    with u_u_col4:
-            st.markdown("나의 VIP 고객")
-            st.markdown(f"{metadata.shape[0]//100}명")
-
+    customer_metadata = metadata[metadata['CUST_ID']==select_options]
     
-    st.markdown("----------------------------------------")
+    
+    islogin=False
+
+    # login
+    if islogin== False:
+        with st.form("my_form"):
+            st.image(r'./data/그림1.png')
+            st.write("Bibber Insurance")
+            username=st.text_input("Username")
+            password=st.text_input("Password")
+
+            # Every form must have a submit button.
+            submitted = st.form_submit_button("Login")
+            if submitted:
+                st.write("Athenticated")
+                islogin=True
 
 
-    # body
-    u_col1, u_col2 = st.columns([4,1])
-    with u_col1:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("연체 예상 여부")
-            # 본인의 연체율과 소득 대비 평균 연체율
-            df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
-            df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
-            chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
-            st.bar_chart(chart_data.T,width=600,height=400,use_container_width=True)
-        with col2:
-            st.markdown("만기 가능 여부")
-            # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
-            a=metadata[metadata['CUST_ID']==select_options][['FMLY_PLPY_CNT']].iloc[0][0]
-            b=metadata[metadata['CUST_ID']==select_options][['CNTT_LAMT_CNT']].iloc[0][0]
-            c=a/(a+b)
-            a1=metadata[['FMLY_PLPY_CNT']].sum()[0]
-            b1=metadata[['CNTT_LAMT_CNT']].sum()[0]
-            c1=a1/(a1+b1)
+    if islogin == True:
+
+        # profile
+        p_col1, p_col2 = st.columns(2)
+        st.image(r'./data/notion-avatar-1678895466269.png')
+        st.warning("김형선 설계사님 안녕하세요.")
+
+        # head
+        u_u_col1, u_u_col2, u_u_col3, u_u_col4 = st.columns(4)
+        with u_u_col1:
+                st.info("나의 고객")
+                st.markdown(f"{metadata.shape[0]}명")
+        with u_u_col2:
+                st.info("나의 기존 고객")
+                st.markdown(f"{metadata.shape[0]//10*9}명")
+        with u_u_col3:
+                st.info("나의 신규 고객")
+                st.markdown(f"{metadata.shape[0]//10}명")
+        with u_u_col4:
+                st.info("나의 VIP 고객")
+                st.markdown(f"{metadata.shape[0]//100}명")
+        st.markdown("----------------------------------------")
+
+        # body0
+        bd0_col1, bd0_col2 = st.columns(2)
+
+        with bd0_col1:
+            st.info("예상 대출 연체자 리스트")
+            # AUTR_FAIL_MCNT
+            x_resampled=pd.read_csv(r'./data/대출 연체 여부 x.csv',encoding='euc-kr')
+
+            df_predicted_loan_overdue= model.loan_overdue_predict(x_resampled.iloc[:,1:])
+            df_predicted_proba_loan_overdue = model.loan_overdue_proba(x_resampled.iloc[:,1:])
+
+            df_predicted_loan_overdue = pd.DataFrame(df_predicted_loan_overdue, columns=['연체여부'])
+            df_predicted_proba_loan_overdue = pd.DataFrame(df_predicted_proba_loan_overdue, columns=['불연체','연체확률'])
+            df_predicted_proba_loan_overdue.drop('불연체',axis=1,inplace=True)
+            
+
+            df_total_predicted_loan_overdue = pd.DataFrame({
+                '고객 ID': x_resampled['CUST_ID'].to_numpy(),
+                '대출 연체 여부': df_predicted_loan_overdue['연체여부'].to_numpy(),
+                '대출 연체 확률':df_predicted_proba_loan_overdue['연체확률'].to_numpy()
+            })
+
+            df_total_predicted_loan_overdue.set_index('고객 ID',inplace=True)
+            st.dataframe(df_total_predicted_loan_overdue[df_total_predicted_loan_overdue['대출 연체 여부']==1].sort_values(by='대출 연체 확률',ascending=False),width=800,height=300)
+
+        # body0-1
+        with bd0_col2:
+            st.info("예상 보험 해지 리스트")
+            # AUTR_FAIL_MCNT
+            x_resampled=pd.read_csv(r'./data/보험 해지 여부 x.csv',encoding='euc-kr')
+
+            df_predicted_loan_overdue= model.insurance_cancellation_predict(x_resampled.iloc[:,1:])
+            df_predicted_proba_loan_overdue = model.insurance_cancellation_proba(x_resampled.iloc[:,1:])
+
+            df_predicted_loan_overdue = pd.DataFrame(df_predicted_loan_overdue, columns=['연체여부'])
+            df_predicted_proba_loan_overdue = pd.DataFrame(df_predicted_proba_loan_overdue, columns=['불연체','연체확률'])
+            df_predicted_proba_loan_overdue.drop('불연체',axis=1,inplace=True)
+            
+
+            df_total_predicted_loan_overdue = pd.DataFrame({
+                '고객 ID': x_resampled.index.to_numpy(),
+                '보험 해지 여부': df_predicted_loan_overdue['연체여부'].to_numpy(),
+                '보험 해지 확률':df_predicted_proba_loan_overdue['연체확률'].to_numpy()
+            })
+
+            df_total_predicted_loan_overdue.set_index('고객 ID',inplace=True)
+            st.dataframe(df_total_predicted_loan_overdue[df_total_predicted_loan_overdue['보험 해지 여부']==1].sort_values(by='보험 해지 확률',ascending=False),width=800,height=300)
+
+        u2_col1, u2_col2 = st.columns([5,5])
+        with u2_col1:
+            st.info("자동이체 실패 고객 리스트")
+            # AUTR_FAIL_MCNT
+            df_temp = metadata
+            df_temp = df_temp.set_index('CUST_ID').rename(columns={'AUTR_FAIL_MCNT':'자동이체실패월수','CUST_ID':'고객 ID'})
+            st.dataframe(df_temp[['자동이체실패월수']].sort_values(by='자동이체실패월수',ascending=False),width=600,height=300)
+
+        with u2_col2:
+            st.info("최근 1년 보험료 연체율 리스트")
+            df_temp = metadata.rename(columns={'LT1Y_PEOD_RATE':'최근 1년간 보험료 연체율','CUST_ID':'고객 ID'})
+            df_temp = df_temp.set_index('고객 ID')
+            st.dataframe(df_temp[['최근 1년간 보험료 연체율']].sort_values(by='최근 1년간 보험료 연체율',ascending=False),width=600,height=300)
+
+        # body1
+        u_col1, u_col2 = st.columns([8,1])
+        with u_col1:
+            col1, col2, col3 = st.columns([1,1,1])
+            with col1:
+                st.markdown("연체 예상 여부")
+                # 본인의 연체율과 소득 대비 평균 연체율
+                df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
+                df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
+                chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
+                st.write(chart_data.T)
+                st.bar_chart(chart_data.T,width=300,height=400,use_container_width=True)
+            with col2:
+                st.markdown("만기 가능 여부")
+                # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
+                a=metadata[metadata['CUST_ID']==select_options][['FMLY_PLPY_CNT']].iloc[0][0]
+                b=metadata[metadata['CUST_ID']==select_options][['CNTT_LAMT_CNT']].iloc[0][0]
+                c=a/(a+b)
+                a1=metadata[['FMLY_PLPY_CNT']].sum()[0]
+                b1=metadata[['CNTT_LAMT_CNT']].sum()[0]
+                c1=a1/(a1+b1)
+
+                chart_data=pd.DataFrame({
+                    '해당 고객 만기율':[c],
+                    '전체고객 만기율':[c1],
+                })
+                st.write(chart_data.T.rename(columns={0:'만기율'}))
+                st.bar_chart(chart_data.T.rename(columns={0:'만기율'}),width=600,height=400,use_container_width=True,x=['해당 고객 만기율','전체고객 만기율'])
+            with col3:
+                st.markdown("고객 신용 등급")
+
+                chart_data=pd.DataFrame({
+                    '최초 신용 등급':[customer_metadata[['LTST_CRDT_GRAD']].iloc[0][0]],
+                    '최신 신용 등급':[customer_metadata[['STRT_CRDT_GRAD']].iloc[0][0]],
+                })
+                st.write(chart_data.T.rename(columns={0:'신용 등급'}))
+                st.bar_chart(chart_data.T.rename(columns={0:'신용 등급'}),width=600,height=400,use_container_width=True, y=['신용 등급'],x=['최초 신용 등급', '최신 신용 등급'])         
+        with u_col2:
+            st.markdown("보장성 납입, 저축성 납입   보험료 비교")
+            # Pie chart, where the slices will be ordered and plotted counter-clockwise:
 
             chart_data=pd.DataFrame({
-                '해당 고객 만기율':[c],
-                '전체고객 만기율':[c1],
-            })
-            st.bar_chart(chart_data.T,width=600,height=400,use_container_width=True,x=['해당 고객 만기율','전체고객 만기율'])
-        with col3:
-            st.markdown("현재 신용 등급")
-            # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
-            df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
-            df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
-            chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
-            st.bar_chart(chart_data,width=600,height=400,use_container_width=True)
-    with u_col2:
-        st.markdown("보험료, 신용대출,  약관대출 비율")
-        df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
-        df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
-        chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
-        st.bar_chart(chart_data,width=600,height=400,use_container_width=True)
+                    '보장성 납입':[customer_metadata[['GDINS_MON_PREM']].iloc[0][0]],
+                    '저축성 납입':[customer_metadata[['SVINS_MON_PREM']].iloc[0][0]],
+                }) 
+            st.write(chart_data.T.rename(columns={0:'납입 보험료'}))
 
-    # Uncomment these lines to peek at these DataFrames.
-    # st.markdown('## 선택한 기존 고객 정보')
-    # st.table(select_metadata.T)
-    
+            labels = '보장성 납입 보험료','저축성 납입 보혐료'
+            sizes = [customer_metadata[['GDINS_MON_PREM']].iloc[0][0], customer_metadata[['SVINS_MON_PREM']].iloc[0][0]]
+            explode = (0, 0.1)  # only "explode" the 2nd slice (i.e. 'Hogs')
+
+            if sizes[0] == 0 and sizes[1] == 0:
+                st.markdown("보험료를 납부하지 않음.")
+            else:
+                plt.rc('font', family='Malgun Gothic') 
+                fig1, ax1 = plt.subplots()
+                ax1.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%',
+                        shadow=True, startangle=90)
+                ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+                st.pyplot(fig1)
+        # body2
+        # u_col1, u_col2 = st.columns([8,1])
+        # with u_col1:
+        #     col1, col2, col3 = st.columns([1,1,1])
+        #     with col1:
+        #         st.markdown("연체 예상 여부")
+        #         # 본인의 연체율과 소득 대비 평균 연체율
+        #         df_person=metadata[metadata['CUST_ID']==select_options][['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'해당 고객 보험료연체율'})
+        #         df_group=metadata[['PREM_OVDU_RATE']].agg(['mean']).rename(columns={'PREM_OVDU_RATE':'전체 보험료연체율'})
+        #         chart_data=df_person.join(df_group).rename(index={'mean':'연체율'})
+        #         st.write(chart_data.T)
+        #         st.bar_chart(chart_data.T,width=300,height=400,use_container_width=True)
+        #     with col2:
+        #         st.markdown("만기 가능 여부")
+        #         # 본인의 완납경험횟수/(완납경험횟수+실효해지건수)와 해당 소득층 별 완납경험횟수/(완납경험횟수+실효해지건수)
+        #         a=metadata[metadata['CUST_ID']==select_options][['FMLY_PLPY_CNT']].iloc[0][0]
+        #         b=metadata[metadata['CUST_ID']==select_options][['CNTT_LAMT_CNT']].iloc[0][0]
+        #         c=a/(a+b)
+        #         a1=metadata[['FMLY_PLPY_CNT']].sum()[0]
+        #         b1=metadata[['CNTT_LAMT_CNT']].sum()[0]
+        #         c1=a1/(a1+b1)
+
+        #         chart_data=pd.DataFrame({
+        #             '해당 고객 만기율':[c],
+        #             '전체고객 만기율':[c1],
+        #         })
+        #         st.write(chart_data.T.rename(columns={0:'만기율'}))
+        #         st.bar_chart(chart_data.T.rename(columns={0:'만기율'}),width=600,height=400,use_container_width=True,x=['해당 고객 만기율','전체고객 만기율'])
+        #     with col3:
+        #         st.markdown("고객 신용 등급")
+
+        #         chart_data=pd.DataFrame({
+        #             '최초 신용 등급':[customer_metadata[['LTST_CRDT_GRAD']].iloc[0][0]],
+        #             '최신 신용 등급':[customer_metadata[['STRT_CRDT_GRAD']].iloc[0][0]],
+        #         })
+        #         st.write(chart_data.T.rename(columns={0:'신용 등급'}))
+        #         st.bar_chart(chart_data.T.rename(columns={0:'신용 등급'}),width=600,height=400,use_container_width=True, y=['신용 등급'],x=['최초 신용 등급', '최신 신용 등급'])         
+        # with u_col2:
+        #     st.markdown("보장성 납입, 저축성 납입   보험료 비교")
+        #     # Pie chart, where the slices will be ordered and plotted counter-clockwise:
+
+        #     chart_data=pd.DataFrame({
+        #             '보장성 납입':[customer_metadata[['GDINS_MON_PREM']].iloc[0][0]],
+        #             '저축성 납입':[customer_metadata[['SVINS_MON_PREM']].iloc[0][0]],
+        #         }) 
+        #     st.write(chart_data.T.rename(columns={0:'납입 보험료'}))
+
+        #     labels = '보장성 납입 보험료','저축성 납입 보혐료'
+        #     sizes = [customer_metadata[['GDINS_MON_PREM']].iloc[0][0], customer_metadata[['SVINS_MON_PREM']].iloc[0][0]]
+        #     explode = (0, 0.1)  # only "explode" the 2nd slice (i.e. 'Hogs')
+
+        #     if sizes[0] == 0 and sizes[1] == 0:
+        #         st.markdown("보험료를 납부하지 않음.")
+        #     else:
+        #         plt.rc('font', family='Malgun Gothic') 
+        #         fig1, ax1 = plt.subplots()
+        #         ax1.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%',
+        #                 shadow=True, startangle=90)
+        #         ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+        #         st.pyplot(fig1)
+        st.markdown("----------------------------------------")
+
 
 
 
