@@ -11,9 +11,21 @@ def insurance_cancellation_predict(client_row):
 
     return result
 
+def insurance_cancellation_proba(client_row):
+    loaded_cancel_model=pickle.load(open(r'./data/보험해지모델.sav','rb'))
+    result = loaded_cancel_model.predict_proba(client_row)
+
+    return result
+
 def loan_overdue_predict(client_row):
     loaded_overdue_model=pickle.load(open(r'./data/대출연체모델.sav','rb'))
     result = loaded_overdue_model.predict(client_row)
+
+    return result
+
+def loan_overdue_proba(client_row):
+    loaded_overdue_model=pickle.load(open(r'./data/대출연체모델.sav','rb'))
+    result = loaded_overdue_model.predict_proba(client_row)
 
     return result
 
